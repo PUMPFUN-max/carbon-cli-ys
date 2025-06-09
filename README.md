@@ -230,5 +230,10 @@ Example:
     ```        
 2. its its optional: `self.max_staleness_slots.hash(state);`
 
+## Transactions not being parsed
+- Well, the problem is here: https://github.com/PUMPFUN-max/carbon-cli-ys/blob/main/src/accounts.rs#L52
+- So, you gotta go through each instruction in decoder>src>instructions and add the actual discrimator.
+- Feel free to open a PR if you think you got a better solution thats supported by global idl's.
+
 ## Import Errors:
 Just import the packages/files... 
