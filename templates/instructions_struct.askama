@@ -1,0 +1,252 @@
+{%- if instruction.requires_imports %}
+use super::super::types::*;
+{%- endif %}
+{% raw %}
+use carbon_core::{CarbonDeserialize, borsh};
+{% endraw %}
+
+#[derive(CarbonDeserialize, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Hash)]
+#[carbon(discriminator = "{{ instruction.discriminator }}")]
+pub struct {{ instruction.struct_name }}{
+    {%- for arg in instruction.args %}
+    pub {{ arg.name }}: {{ arg.rust_type }},
+    {%- endfor %}
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash, serde::Serialize, serde::Deserialize)]
+pub struct {{ instruction.struct_name }}InstructionAccounts {
+    {%- for account in instruction.accounts %}
+    {%- if account.is_optional %}
+    pub {{ account.name }}: Option<solana_pubkey::Pubkey>,
+    {%- else %}
+    pub {{ account.name }}: solana_pubkey::Pubkey,
+    {%- endif %}
+    {%- endfor %}
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash, serde::Serialize, serde::Deserialize)]
+pub struct {{ instruction.struct_name }}CompiledInstructionAccounts {
+    {%- for account in instruction.accounts %}
+    {%- if account.is_optional %}
+    pub {{ account.name }}: Option<u8>,
+    {%- else %}
+    pub {{ account.name }}: u8,
+    {%- endif %}
+    {%- endfor %}
+}
+
+impl carbon_core::deserialize::ArrangeAccounts for {{ instruction.struct_name }} {
+    type ArrangedAccounts = {{ instruction.struct_name }}InstructionAccounts;
+
+    fn arrange_accounts(accounts: &[solana_instruction::AccountMeta]) -> Option<Self::ArrangedAccounts> {
+        // Try different optional account combinations, preferring more complete matches
+        if accounts.len() >= {{ instruction.accounts.len() }} {
+            Self::arrange_accounts_{{ instruction.accounts.len() }}(accounts)
+        } {%- for account in instruction.accounts %}{%- if account.is_optional %} else if accounts.len() >= {{ instruction.accounts.len() - 1 }} {
+            Self::arrange_accounts_{{ instruction.accounts.len() - 1 }}(accounts)
+        }{%- break %}{%- endif %}{%- endfor %} else {
+            None
+        }
+    }
+}
+
+pub trait ArrangeCompiledAccounts {
+    type ArrangedAccounts;
+    fn arrange_compiled_accounts(accounts: &[u8]) -> Option<Self::ArrangedAccounts>;
+}
+
+impl ArrangeCompiledAccounts for {{ instruction.struct_name }} {
+    type ArrangedAccounts = {{ instruction.struct_name }}CompiledInstructionAccounts;
+
+    fn arrange_compiled_accounts(accounts: &[u8]) -> Option<Self::ArrangedAccounts> {
+        // Try different optional account combinations, preferring more complete matches
+        if accounts.len() >= {{ instruction.accounts.len() }} {
+            Self::arrange_compiled_accounts_{{ instruction.accounts.len() }}(accounts)
+        } {%- for account in instruction.accounts %}{%- if account.is_optional %} else if accounts.len() >= {{ instruction.accounts.len() - 1 }} {
+            Self::arrange_compiled_accounts_{{ instruction.accounts.len() - 1 }}(accounts)
+        }{%- break %}{%- endif %}{%- endfor %} else {
+            None
+        }
+    }
+}
+
+impl {{ instruction.struct_name }} {
+    // Generate arrange functions for different account counts
+    {%- for account in instruction.accounts %}
+    {%- if account.is_optional %}
+    
+    // Arrange traditional accounts without optional accounts ({{ instruction.accounts.len() - 1 }} accounts)
+    pub fn arrange_accounts_{{ instruction.accounts.len() - 1 }}(accounts: &[solana_instruction::AccountMeta]) -> Option<{{ instruction.struct_name }}InstructionAccounts> {
+        if accounts.len() < {{ instruction.accounts.len() - 1 }} {
+            return None;
+        }
+        
+        // Calculate compressed indices by skipping optional accounts
+        let mut compressed_index = 0;
+        
+        Some({{ instruction.struct_name }}InstructionAccounts {
+            {%- for acc in instruction.accounts %}
+            {%- if acc.is_optional %}
+            {{ acc.name }}: None,
+            {%- else %}
+            {{ acc.name }}: {
+                let value = accounts[compressed_index].pubkey;
+                compressed_index += 1;
+                value
+            },
+            {%- endif %}
+            {%- endfor %}
+        })
+    }
+    {%- break %}
+    {%- endif %}
+    {%- endfor %}
+    
+    // Arrange traditional accounts with all accounts ({{ instruction.accounts.len() }} accounts)
+    pub fn arrange_accounts_{{ instruction.accounts.len() }}(accounts: &[solana_instruction::AccountMeta]) -> Option<{{ instruction.struct_name }}InstructionAccounts> {
+        if accounts.len() < {{ instruction.accounts.len() }} {
+            return None;
+        }
+        
+        Some({{ instruction.struct_name }}InstructionAccounts {
+            {%- for account in instruction.accounts %}
+            {%- set i = loop.index0 %}
+            {%- if account.is_optional %}
+            {{ account.name }}: Some(accounts[{{ i }}].pubkey),
+            {%- else %}
+            {{ account.name }}: accounts[{{ i }}].pubkey,
+            {%- endif %}
+            {%- endfor %}
+        })
+    }
+    
+    // Generate compiled accounts arrange functions
+    {%- for account in instruction.accounts %}
+    {%- if account.is_optional %}
+    
+    // Arrange compiled accounts without optional accounts ({{ instruction.accounts.len() - 1 }} accounts)
+    pub fn arrange_compiled_accounts_{{ instruction.accounts.len() - 1 }}(accounts: &[u8]) -> Option<{{ instruction.struct_name }}CompiledInstructionAccounts> {
+        if accounts.len() < {{ instruction.accounts.len() - 1 }} {
+            return None;
+        }
+        
+        // Calculate compressed indices by skipping optional accounts
+        let mut compressed_index = 0;
+        
+        Some({{ instruction.struct_name }}CompiledInstructionAccounts {
+            {%- for acc in instruction.accounts %}
+            {%- if acc.is_optional %}
+            {{ acc.name }}: None,
+            {%- else %}
+            {{ acc.name }}: {
+                let value = accounts[compressed_index];
+                compressed_index += 1;
+                value
+            },
+            {%- endif %}
+            {%- endfor %}
+        })
+    }
+    {%- break %}
+    {%- endif %}
+    {%- endfor %}
+    
+    // Arrange compiled accounts with all accounts ({{ instruction.accounts.len() }} accounts)
+    pub fn arrange_compiled_accounts_{{ instruction.accounts.len() }}(accounts: &[u8]) -> Option<{{ instruction.struct_name }}CompiledInstructionAccounts> {
+        if accounts.len() < {{ instruction.accounts.len() }} {
+            return None;
+        }
+        
+        Some({{ instruction.struct_name }}CompiledInstructionAccounts {
+            {%- for account in instruction.accounts %}
+            {%- set i = loop.index0 %}
+            {%- if account.is_optional %}
+            {{ account.name }}: Some(accounts[{{ i }}]),
+            {%- else %}
+            {{ account.name }}: accounts[{{ i }}],
+            {%- endif %}
+            {%- endfor %}
+        })
+    }
+
+    pub fn resolve_compiled_accounts(
+        account_indices: &[u8],
+        account_keys: &[solana_pubkey::Pubkey],
+    ) -> Option<{{ instruction.struct_name }}InstructionAccounts> {
+        match account_indices.len() {
+            // Support both with and without optional accounts
+            {%- for account in instruction.accounts %}
+            {%- if account.is_optional %}
+            {{ instruction.accounts.len() - 1 }} => Self::resolve_compiled_accounts_{{ instruction.accounts.len() - 1 }}(account_indices, account_keys),
+            {%- break %}
+            {%- endif %}
+            {%- endfor %}
+            {{ instruction.accounts.len() }} => Self::resolve_compiled_accounts_{{ instruction.accounts.len() }}(account_indices, account_keys),
+            _ => None,
+        }
+    }
+
+    
+    // Generate resolve functions
+    {%- for account in instruction.accounts %}
+    {%- if account.is_optional %}
+    
+    // Resolve accounts without optional accounts ({{ instruction.accounts.len() - 1 }} accounts)
+    pub fn resolve_compiled_accounts_{{ instruction.accounts.len() - 1 }}(
+        account_indices: &[u8],
+        account_keys: &[solana_pubkey::Pubkey],
+    ) -> Option<{{ instruction.struct_name }}InstructionAccounts> {
+        if account_indices.len() < {{ instruction.accounts.len() - 1 }} {
+            return None;
+        }
+
+        // Calculate compressed indices by skipping optional accounts
+        let mut compressed_index = 0;
+        
+        {%- for acc in instruction.accounts %}
+        {%- if acc.is_optional %}
+        let {{ acc.name }} = None;
+        {%- else %}
+        let {{ acc.name }}_index = account_indices[compressed_index] as usize;
+        let {{ acc.name }} = account_keys.get({{ acc.name }}_index)?.clone();
+        compressed_index += 1;
+        {%- endif %}
+        {%- endfor %}
+
+        Some({{ instruction.struct_name }}InstructionAccounts {
+            {%- for acc in instruction.accounts %}
+            {{ acc.name }},
+            {%- endfor %}
+        })
+    }
+    {%- break %}
+    {%- endif %}
+    {%- endfor %}
+    
+    // Resolve accounts with all accounts ({{ instruction.accounts.len() }} accounts)
+    pub fn resolve_compiled_accounts_{{ instruction.accounts.len() }}(
+        account_indices: &[u8],
+        account_keys: &[solana_pubkey::Pubkey],
+    ) -> Option<{{ instruction.struct_name }}InstructionAccounts> {
+        if account_indices.len() < {{ instruction.accounts.len() }} {
+            return None;
+        }
+
+        {%- for account in instruction.accounts %}
+        {%- set i = loop.index0 %}
+        {%- if account.is_optional %}
+        let {{ account.name }}_index = account_indices[{{ i }}] as usize;
+        let {{ account.name }} = account_keys.get({{ account.name }}_index).map(|k| k.clone());
+        {%- else %}
+        let {{ account.name }}_index = account_indices[{{ i }}] as usize;
+        let {{ account.name }} = account_keys.get({{ account.name }}_index)?.clone();
+        {%- endif %}
+        {%- endfor %}
+
+        Some({{ instruction.struct_name }}InstructionAccounts {
+            {%- for account in instruction.accounts %}
+            {{ account.name }},
+            {%- endfor %}
+        })
+    }
+}

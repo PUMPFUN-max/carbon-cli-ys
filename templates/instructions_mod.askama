@@ -1,0 +1,199 @@
+{% raw %}
+
+{% endraw %}
+
+use super::{{ decoder_name }};
+
+{%- for instruction in instructions %}
+pub mod {{ instruction.module_name }};
+pub use {{ instruction.module_name }}::{{ instruction.struct_name }}CompiledInstructionAccounts;
+{%- endfor %}
+{%- for event in events %}
+pub mod {{ event.module_name }};
+{%- endfor %}
+
+#[derive(carbon_core::InstructionType, serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Clone, Hash)]
+pub enum {{ program_instruction_enum }} {
+    {%- for instruction in instructions %}
+    {{ instruction.struct_name }}({{ instruction.module_name }}::{{ instruction.struct_name }}),
+    {%- endfor %}
+    {%- for event in events %}
+    {{ event.struct_name }}({{ event.module_name }}::{{ event.struct_name }}),
+    {%- endfor %}
+}
+
+impl<'a> carbon_core::instruction::InstructionDecoder<'a> for {{ decoder_name }} {
+    type InstructionType = {{ program_instruction_enum }};
+
+    fn decode_instruction(
+        &self,
+        instruction: &solana_instruction::Instruction,
+    ) -> Option<carbon_core::instruction::DecodedInstruction<Self::InstructionType>> {
+        carbon_core::try_decode_instructions!(instruction,
+            {%- for instruction in instructions %}
+            {{ program_instruction_enum }}::{{ instruction.struct_name }} => {{ instruction.module_name }}::{{ instruction.struct_name }},
+            {%- endfor %}
+            {%- for event in events %}
+            {{ program_instruction_enum }}::{{ event.struct_name }} => {{ event.module_name }}::{{ event.struct_name }},
+            {%- endfor %}
+        )
+    }
+}
+
+pub trait CompiledInstructionDecoder {
+    type InstructionType;
+
+    fn decode_compiled_instruction(
+        &self,
+        instruction: &yellowstone_grpc_proto::prelude::CompiledInstruction,
+    ) -> Option<CompiledDecodedInstruction<Self::InstructionType>>;
+}
+
+pub trait CompiledInstructionParamsDecoder {
+    type InstructionType;
+
+    fn decode_compiled_instruction_params(
+        &self,
+        instruction: &yellowstone_grpc_proto::prelude::CompiledInstruction,
+    ) -> Option<Self::InstructionType>;
+}
+
+pub trait CompiledInstructionWithAccountsDecoder {
+    type InstructionType;
+
+    fn decode_compiled_instruction_with_accounts(
+        &self,
+        instruction: &yellowstone_grpc_proto::prelude::CompiledInstruction,
+        account_keys: &[solana_pubkey::Pubkey],
+    ) -> Option<ResolvedDecodedInstruction<Self::InstructionType>>;
+}
+
+#[derive(Debug, Clone)]
+pub struct CompiledDecodedInstruction<T> {
+    pub data: T,
+    pub compiled_accounts: CompiledInstructionAccounts,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedDecodedInstruction<T> {
+    pub data: T,
+    pub accounts: ResolvedInstructionAccounts,
+}
+
+#[derive(Debug, Clone)]
+pub enum CompiledInstructionAccounts {
+    {%- for instruction in instructions %}
+    {{ instruction.struct_name }}({{ instruction.module_name }}::{{ instruction.struct_name }}CompiledInstructionAccounts),
+    {%- endfor %}
+    {%- for event in events %}
+    {{ event.struct_name }}(()), // Events don't have accounts
+    {%- endfor %}
+}
+
+#[derive(Debug, Clone)]
+pub enum ResolvedInstructionAccounts {
+    {%- for instruction in instructions %}
+    {{ instruction.struct_name }}({{ instruction.module_name }}::{{ instruction.struct_name }}InstructionAccounts),
+    {%- endfor %}
+    {%- for event in events %}
+    {{ event.struct_name }}(()), // Events don't have accounts
+    {%- endfor %}
+}
+
+impl CompiledInstructionDecoder for {{ decoder_name }} {
+    type InstructionType = {{ program_instruction_enum }};
+
+    fn decode_compiled_instruction(
+        &self,
+        instruction: &yellowstone_grpc_proto::prelude::CompiledInstruction,
+    ) -> Option<CompiledDecodedInstruction<Self::InstructionType>> {
+        use carbon_core::deserialize::CarbonDeserialize;
+        {%- for instruction_item in instructions %}
+        use {{ instruction_item.module_name }}::ArrangeCompiledAccounts as _{{ instruction_item.struct_name }}ArrangeCompiledAccounts;
+        {%- endfor %}
+        {%- for event in events %}
+        use {{ event.module_name }}::ArrangeCompiledAccounts as _{{ event.struct_name }}ArrangeCompiledAccounts;
+        {%- endfor %}
+
+        {%- for instruction_item in instructions %}
+        if let Some(decoded) = {{ instruction_item.module_name }}::{{ instruction_item.struct_name }}::deserialize(&instruction.data) {
+            if let Some(compiled_accounts) = {{ instruction_item.module_name }}::{{ instruction_item.struct_name }}::arrange_compiled_accounts(&instruction.accounts) {
+                return Some(CompiledDecodedInstruction {
+                    data: {{ program_instruction_enum }}::{{ instruction_item.struct_name }}(decoded),
+                    compiled_accounts: CompiledInstructionAccounts::{{ instruction_item.struct_name }}(compiled_accounts),
+                });
+            }
+        }
+        {%- endfor %}
+        {%- for event in events %}
+        if let Some(decoded) = {{ event.module_name }}::{{ event.struct_name }}::deserialize(&instruction.data) {
+            if let Some(_accounts) = {{ event.module_name }}::{{ event.struct_name }}::arrange_compiled_accounts(&instruction.accounts) {
+                return Some(CompiledDecodedInstruction {
+                    data: {{ program_instruction_enum }}::{{ event.struct_name }}(decoded),
+                    compiled_accounts: CompiledInstructionAccounts::{{ event.struct_name }}(()),
+                });
+            }
+        }
+        {%- endfor %}
+
+        None
+    }
+}
+
+impl CompiledInstructionParamsDecoder for {{ decoder_name }} {
+    type InstructionType = {{ program_instruction_enum }};
+
+    fn decode_compiled_instruction_params(
+        &self,
+        instruction: &yellowstone_grpc_proto::prelude::CompiledInstruction,
+    ) -> Option<Self::InstructionType> {
+        use carbon_core::deserialize::CarbonDeserialize;
+
+        {%- for instruction_item in instructions %}
+        if let Some(decoded) = {{ instruction_item.module_name }}::{{ instruction_item.struct_name }}::deserialize(&instruction.data) {
+            return Some({{ program_instruction_enum }}::{{ instruction_item.struct_name }}(decoded));
+        }
+        {%- endfor %}
+        {%- for event in events %}
+        if let Some(decoded) = {{ event.module_name }}::{{ event.struct_name }}::deserialize(&instruction.data) {
+            return Some({{ program_instruction_enum }}::{{ event.struct_name }}(decoded));
+        }
+        {%- endfor %}
+
+        None
+    }
+}
+
+impl CompiledInstructionWithAccountsDecoder for {{ decoder_name }} {
+    type InstructionType = {{ program_instruction_enum }};
+
+    fn decode_compiled_instruction_with_accounts(
+        &self,
+        instruction: &yellowstone_grpc_proto::prelude::CompiledInstruction,
+        account_keys: &[solana_pubkey::Pubkey],
+    ) -> Option<ResolvedDecodedInstruction<Self::InstructionType>> {
+        use carbon_core::deserialize::CarbonDeserialize;
+
+        {%- for instruction_item in instructions %}
+        if let Some(decoded) = {{ instruction_item.module_name }}::{{ instruction_item.struct_name }}::deserialize(&instruction.data) {
+            if let Some(resolved_accounts) = {{ instruction_item.module_name }}::{{ instruction_item.struct_name }}::resolve_compiled_accounts(&instruction.accounts, account_keys) {
+                return Some(ResolvedDecodedInstruction {
+                    data: {{ program_instruction_enum }}::{{ instruction_item.struct_name }}(decoded),
+                    accounts: ResolvedInstructionAccounts::{{ instruction_item.struct_name }}(resolved_accounts),
+                });
+            }
+        }
+        {%- endfor %}
+        {%- for event in events %}
+        if let Some(decoded) = {{ event.module_name }}::{{ event.struct_name }}::deserialize(&instruction.data) {
+            return Some(ResolvedDecodedInstruction {
+                data: {{ program_instruction_enum }}::{{ event.struct_name }}(decoded),
+                accounts: ResolvedInstructionAccounts::{{ event.struct_name }}(()),
+            });
+        }
+        {%- endfor %}
+
+        None
+    }
+}
+
