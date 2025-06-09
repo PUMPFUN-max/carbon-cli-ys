@@ -1,6 +1,6 @@
 # Carbon CLI YS
 You can now pass the yellowstone compiled instruction type to the generated decoder. 
-
+Official carbon cli link: https://github.com/sevenlabs-hq/carbon
 ## Overview
 
 Carbon CLI streamlines the development of Solana transaction parsing infrastructure by:
