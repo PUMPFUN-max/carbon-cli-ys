@@ -15,7 +15,7 @@ Carbon CLI streamlines the development of Solana transaction parsing infrastruct
 
 ```bash
 git clone <repository-url>
-cd carbon-cli
+cd carbon-cli-ys
 cargo build --release
 ```
 
