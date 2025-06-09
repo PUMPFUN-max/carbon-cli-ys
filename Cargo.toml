@@ -1,0 +1,32 @@
+[package]
+name = "carbon-cli-ys"
+version = "0.8.1"
+edition = "2021"
+description = "CLI for Carbon"
+keywords = ["solana", "cli"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+solana-client = "2.2"
+solana-commitment-config = "2.2"
+solana-pubkey = { version = "2.2", features = ["serde", "borsh", "curve25519"] }
+
+anyhow = "1.0.96"
+askama = "0.12.1"
+borsh = { version = "1.5.1" , features = ["derive"]}
+clap = { version = "4.5.30", features = ["derive"] }
+flate2 = "1.0.35"
+heck = "0.5.0"
+hex = "0.4.3"
+inquire = "0.7.5"
+serde = { version = "1.0.208", features = ["derive"] }
+serde_json = "1.0.138"
+sha2 = "0.10.8"
+
+
+solana-account = "2.2"
+solana-instruction = { version = "2.2", default-features = false }
+serde-big-array = "0.5.1"
+carbon-core = "0.8.0"
+carbon-proc-macros = "0.8"
+yellowstone-grpc-proto = "6.1.0"
